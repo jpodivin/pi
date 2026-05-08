@@ -58,6 +58,11 @@ function hasToolHistory(messages: Message[]): boolean {
 	return false;
 }
 
+function sanitizeHarmonyToolName(name: string): string {
+	const idx = name.indexOf("<|");
+	return idx >= 0 ? name.substring(0, idx) : name;
+}
+
 function isTextContentBlock(block: { type: string }): block is TextContent {
 	return block.type === "text";
 }
@@ -232,7 +237,7 @@ export const streamOpenAICompletions: StreamFunction<"openai-completions", OpenA
 					block = {
 						type: "toolCall",
 						id: toolCall.id || "",
-						name: toolCall.function?.name || "",
+						name: sanitizeHarmonyToolName(toolCall.function?.name || ""),
 						arguments: {},
 						partialArgs: "",
 						streamIndex,
@@ -343,7 +348,7 @@ export const streamOpenAICompletions: StreamFunction<"openai-completions", OpenA
 								toolCallBlocksById.set(toolCall.id, block);
 							}
 							if (!block.name && toolCall.function?.name) {
-								block.name = toolCall.function.name;
+								block.name = sanitizeHarmonyToolName(toolCall.function.name);
 							}
 
 							let delta = "";
