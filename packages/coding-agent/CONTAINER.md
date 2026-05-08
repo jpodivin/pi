@@ -16,7 +16,7 @@ podman build -f packages/coding-agent/Containerfile -t pi-agent .
 
 ```bash
 podman run -it --rm \
-  -v "$(pwd)":/workspace:Z \
+  -v "$(pwd)":/home/node/workspace:Z \
   -e ANTHROPIC_API_KEY \
   pi-agent
 ```
@@ -27,7 +27,7 @@ The `:Z` suffix is required on SELinux-enabled systems (Fedora, RHEL). It relabe
 
 ```bash
 podman run --rm \
-  -v "$(pwd)":/workspace:Z \
+  -v "$(pwd)":/home/node/workspace:Z \
   -e ANTHROPIC_API_KEY \
   pi-agent -p "Explain this codebase"
 ```
@@ -36,7 +36,7 @@ podman run --rm \
 
 ```bash
 echo "What does main.ts do?" | podman run -i --rm \
-  -v "$(pwd)":/workspace:Z \
+  -v "$(pwd)":/home/node/workspace:Z \
   -e ANTHROPIC_API_KEY \
   pi-agent
 ```
@@ -47,20 +47,20 @@ Requires persistent config volume (see below):
 
 ```bash
 podman run -it --rm \
-  -v "$(pwd)":/workspace:Z \
-  -v pi-config:/root/.pi:Z \
+  -v "$(pwd)":/home/node/workspace:Z \
+  -v pi-config:/home/node/.pi:Z \
   -e ANTHROPIC_API_KEY \
   pi-agent --continue
 ```
 
 ## Persisting configuration and sessions
 
-Without a volume for `~/.pi/`, settings, auth tokens, sessions, and installed extensions are lost when the container exits.
+Without a volume for the global config directory (`/home/node/.pi` inside the container), settings, auth tokens, sessions, and installed extensions are lost when the container exits. This is separate from any project-level `.pi/` directory in the workspace.
 
 ```bash
 podman run -it --rm \
-  -v "$(pwd)":/workspace:Z \
-  -v pi-config:/root/.pi:Z \
+  -v "$(pwd)":/home/node/workspace:Z \
+  -v pi-config:/home/node/.pi:Z \
   -e ANTHROPIC_API_KEY \
   pi-agent
 ```
@@ -96,8 +96,8 @@ With rootless Podman, files created inside the container may be owned by a diffe
 ```bash
 podman run -it --rm \
   --userns=keep-id \
-  -v "$(pwd)":/workspace:Z \
-  -v pi-config:/root/.pi:Z \
+  -v "$(pwd)":/home/node/workspace:Z \
+  -v pi-config:/home/node/.pi:Z \
   -e ANTHROPIC_API_KEY \
   pi-agent
 ```
@@ -107,7 +107,7 @@ podman run -it --rm \
 Add to `~/.bashrc` or `~/.zshrc` for convenience:
 
 ```bash
-alias pi='podman run -it --rm --userns=keep-id -v "$(pwd)":/workspace:Z -v pi-config:/root/.pi:Z -e ANTHROPIC_API_KEY pi-agent'
+alias pi='podman run -it --rm --userns=keep-id -v "$(pwd)":/home/node/workspace:Z -v pi-config:/home/node/.pi:Z -e ANTHROPIC_API_KEY pi-agent'
 ```
 
 Then use `pi` as if it were installed natively.
@@ -118,7 +118,7 @@ Then use `pi` as if it were installed natively.
 
 ```bash
 podman run -it --rm \
-  -v "$(pwd)":/workspace:Z \
+  -v "$(pwd)":/home/node/workspace:Z \
   -v /path/to/my-extension:/extensions/my-extension:Z,ro \
   -e ANTHROPIC_API_KEY \
   pi-agent --extension /extensions/my-extension

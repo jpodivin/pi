@@ -2,7 +2,17 @@
 # podman build -f packages/coding-agent/Containerfile -t pi-agent .
 
 # ==============================================================================
-# Stage 1: Builder
+# Stage 1: Extract package manifests (keeps npm ci cacheable without a manual list)
+# ==============================================================================
+FROM busybox AS manifests
+WORKDIR /src
+COPY . .
+RUN find . -not \( -name "package.json" -o -name "package-lock.json" -o -type d \) -delete 2>/dev/null; \
+    find . -empty -type d -delete 2>/dev/null; \
+    true
+
+# ==============================================================================
+# Stage 2: Builder
 # ==============================================================================
 FROM node:22-bookworm-slim AS builder
 
@@ -15,20 +25,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /build
 
-# Copy package manifests first for layer caching
-COPY package.json package-lock.json ./
-COPY packages/tui/package.json packages/tui/
-COPY packages/ai/package.json packages/ai/
-COPY packages/agent/package.json packages/agent/
-COPY packages/coding-agent/package.json packages/coding-agent/
-COPY packages/mom/package.json packages/mom/
-COPY packages/web-ui/package.json packages/web-ui/
-COPY packages/pods/package.json packages/pods/
-COPY packages/web-ui/example/package.json packages/web-ui/example/
-COPY packages/coding-agent/examples/extensions/with-deps/package.json packages/coding-agent/examples/extensions/with-deps/
-COPY packages/coding-agent/examples/extensions/custom-provider-anthropic/package.json packages/coding-agent/examples/extensions/custom-provider-anthropic/
-COPY packages/coding-agent/examples/extensions/custom-provider-gitlab-duo/package.json packages/coding-agent/examples/extensions/custom-provider-gitlab-duo/
-COPY packages/coding-agent/examples/extensions/custom-provider-qwen-cli/package.json packages/coding-agent/examples/extensions/custom-provider-qwen-cli/
+COPY --from=manifests /src/ .
 
 RUN npm ci
 
@@ -36,14 +33,15 @@ RUN npm ci
 COPY . .
 
 # Build only the 4 packages needed by coding-agent, in dependency order.
-# Skip generate-models for pi-ai — models.generated.ts is committed to source.
-RUN cd packages/tui && npx tsgo -p tsconfig.build.json \
+# pi-ai uses `npx tsgo` directly instead of `npm run build` to skip
+# generate-models, which needs network. models.generated.ts is committed.
+RUN cd packages/tui && npm run build \
     && cd ../ai && npx tsgo -p tsconfig.build.json \
-    && cd ../agent && npx tsgo -p tsconfig.build.json \
+    && cd ../agent && npm run build \
     && cd ../coding-agent && npm run build
 
 # ==============================================================================
-# Stage 2: Runtime
+# Stage 3: Runtime
 # ==============================================================================
 FROM node:22-bookworm-slim
 
@@ -58,20 +56,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Copy package manifests and lockfile for production install
-COPY package.json package-lock.json ./
-COPY packages/tui/package.json packages/tui/
-COPY packages/ai/package.json packages/ai/
-COPY packages/agent/package.json packages/agent/
-COPY packages/coding-agent/package.json packages/coding-agent/
-COPY packages/mom/package.json packages/mom/
-COPY packages/web-ui/package.json packages/web-ui/
-COPY packages/pods/package.json packages/pods/
-COPY packages/web-ui/example/package.json packages/web-ui/example/
-COPY packages/coding-agent/examples/extensions/with-deps/package.json packages/coding-agent/examples/extensions/with-deps/
-COPY packages/coding-agent/examples/extensions/custom-provider-anthropic/package.json packages/coding-agent/examples/extensions/custom-provider-anthropic/
-COPY packages/coding-agent/examples/extensions/custom-provider-gitlab-duo/package.json packages/coding-agent/examples/extensions/custom-provider-gitlab-duo/
-COPY packages/coding-agent/examples/extensions/custom-provider-qwen-cli/package.json packages/coding-agent/examples/extensions/custom-provider-qwen-cli/
+COPY --from=manifests /src/ .
 
 RUN npm ci --omit=dev --ignore-scripts
 
@@ -89,21 +74,19 @@ COPY packages/coding-agent/CHANGELOG.md packages/coding-agent/
 
 RUN ln -s /app/packages/coding-agent/dist/cli.js /usr/local/bin/pi
 
-# Add a non-root user for security. The home directory is set to /workspace.
-RUN groupadd --gid 1001 agent \
-    && useradd --uid 1001 --gid 1001 --shell /bin/bash --create-home --home-dir /workspace agent \
-    && chown -R agent:agent /app
+RUN chown -R node:node /app
 
-USER agent
+USER node
 
 ENV TERM=xterm-256color
 ENV PI_SKIP_VERSION_CHECK=1
 ENV NODE_ENV=production
+ENV NPM_CONFIG_PREFIX=/home/node/.npm-global
 
 # pgrep is in procps, which is added above
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
   CMD pgrep -f "/app/packages/coding-agent/dist/cli.js" > /dev/null || exit 1
 
-WORKDIR /workspace
+WORKDIR /home/node/workspace
 
 ENTRYPOINT ["node", "/app/packages/coding-agent/dist/cli.js"]
