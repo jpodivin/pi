@@ -166,3 +166,18 @@ export function markCompletedSteps(text: string, items: TodoItem[]): number {
 	}
 	return doneSteps.length;
 }
+
+/**
+ * Filter a list of desired tool names against registered tools.
+ * Returns only tools that are actually registered, plus whether
+ * the questionnaire tool (soft dependency) is among them.
+ */
+export interface ResolvedTools {
+	tools: string[];
+	hasQuestionnaire: boolean;
+}
+
+export function resolveAvailableTools(desired: readonly string[], registered: readonly string[]): ResolvedTools {
+	const tools = desired.filter((name) => registered.includes(name));
+	return { tools, hasQuestionnaire: tools.includes("questionnaire") };
+}

@@ -5,6 +5,7 @@ import {
 	extractTodoItems,
 	isSafeCommand,
 	markCompletedSteps,
+	resolveAvailableTools,
 	type TodoItem,
 } from "../examples/extensions/plan-mode/utils.ts";
 
@@ -257,5 +258,49 @@ describe("markCompletedSteps", () => {
 
 		markCompletedSteps("[DONE:1]", items);
 		expect(items[0].completed).toBe(true);
+	});
+});
+
+describe("resolveAvailableTools", () => {
+	const desired = ["read", "bash", "grep", "find", "ls", "questionnaire"] as const;
+
+	it("returns all tools when all are registered", () => {
+		const registered = [...desired];
+		const result = resolveAvailableTools(desired, registered);
+		expect(result.tools).toEqual(desired);
+		expect(result.hasQuestionnaire).toBe(true);
+	});
+
+	it("filters out unregistered tools", () => {
+		const registered = ["read", "bash", "grep"];
+		const result = resolveAvailableTools(desired, registered);
+		expect(result.tools).toEqual(["read", "bash", "grep"]);
+		expect(result.hasQuestionnaire).toBe(false);
+	});
+
+	it("marks hasQuestionnaire false when questionnaire is missing", () => {
+		const registered = ["read", "bash", "grep", "find", "ls"];
+		const result = resolveAvailableTools(desired, registered);
+		expect(result.hasQuestionnaire).toBe(false);
+		expect(result.tools).toHaveLength(5);
+	});
+
+	it("marks hasQuestionnaire true when only questionnaire is registered", () => {
+		const registered = ["questionnaire"];
+		const result = resolveAvailableTools(desired, registered);
+		expect(result.tools).toEqual(["questionnaire"]);
+		expect(result.hasQuestionnaire).toBe(true);
+	});
+
+	it("returns empty tools when nothing is registered", () => {
+		const result = resolveAvailableTools(desired, []);
+		expect(result.tools).toEqual([]);
+		expect(result.hasQuestionnaire).toBe(false);
+	});
+
+	it("preserves order of desired tools", () => {
+		const registered = ["ls", "read", "questionnaire"];
+		const result = resolveAvailableTools(desired, registered);
+		expect(result.tools).toEqual(desired.filter((n) => registered.includes(n)));
 	});
 });

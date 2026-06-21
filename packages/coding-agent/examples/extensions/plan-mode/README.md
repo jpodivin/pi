@@ -11,6 +11,18 @@ Read-only exploration mode for safe code analysis.
 - **[DONE:n] markers**: Explicit step completion tracking
 - **Session persistence**: State survives session resume
 
+## Dependencies
+
+- **`questionnaire.ts`** (soft) — Provides clarifying-questions UI within plan mode.
+  Load it alongside plan mode if the agent needs to ask users clarifying questions.
+  Plan mode works without it; the clarifying-question capability is silently
+  unavailable (a warning is shown on activation).
+
+  ```bash
+  pi --extension examples/extensions/plan-mode/index.ts \
+     --extension examples/extensions/questionnaire.ts
+  ```
+
 ## Commands
 
 - `/plan` - Toggle plan mode

@@ -16,7 +16,7 @@ import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { AssistantMessage, TextContent } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Key } from "@earendil-works/pi-tui";
-import { extractTodoItems, isSafeCommand, markCompletedSteps, type TodoItem } from "./utils.ts";
+import { extractTodoItems, isSafeCommand, markCompletedSteps, resolveAvailableTools, type TodoItem } from "./utils.ts";
 
 // Tools
 const PLAN_MODE_TOOLS = ["read", "bash", "grep", "find", "ls", "questionnaire"];
@@ -45,6 +45,14 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		type: "boolean",
 		default: false,
 	});
+
+	// Resolve which plan mode tools are actually registered.
+	// questionnaire is a soft dependency: plan mode works without it,
+	// but the clarifying-questions feature will be unavailable.
+	function getPlanModeTools(): { tools: string[]; hasQuestionnaire: boolean } {
+		const registeredNames = pi.getAllTools().map((t) => t.name);
+		return resolveAvailableTools(PLAN_MODE_TOOLS, registeredNames);
+	}
 
 	function updateStatus(ctx: ExtensionContext): void {
 		// Footer status
@@ -79,8 +87,14 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		todoItems = [];
 
 		if (planModeEnabled) {
-			pi.setActiveTools(PLAN_MODE_TOOLS);
-			ctx.ui.notify(`Plan mode enabled. Tools: ${PLAN_MODE_TOOLS.join(", ")}`);
+			const { tools, hasQuestionnaire } = getPlanModeTools();
+			pi.setActiveTools(tools);
+			const msg = `Plan mode enabled. Tools: ${tools.join(", ")}`;
+			if (!hasQuestionnaire) {
+				ctx.ui.notify(`${msg} (questionnaire not loaded — clarifying questions unavailable)`, "warning");
+			} else {
+				ctx.ui.notify(msg);
+			}
 		} else {
 			pi.setActiveTools(NORMAL_MODE_TOOLS);
 			ctx.ui.notify("Plan mode disabled. Full access restored.");
@@ -158,28 +172,36 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 	// Inject plan/execution context before agent starts
 	pi.on("before_agent_start", async () => {
 		if (planModeEnabled) {
+			const { tools, hasQuestionnaire } = getPlanModeTools();
+			const lines = [
+				"[PLAN MODE ACTIVE]",
+				"You are in plan mode - a read-only exploration mode for safe code analysis.",
+				"",
+				"Restrictions:",
+				`- You can only use: ${tools.join(", ")}`,
+				"- You CANNOT use: edit, write (file modifications are disabled)",
+				"- Bash is restricted to an allowlist of read-only commands",
+				"",
+			];
+			if (hasQuestionnaire) {
+				lines.push("Ask clarifying questions using the questionnaire tool.");
+			}
+			lines.push(
+				"Use brave-search skill via bash for web research.",
+				"",
+				'Create a detailed numbered plan under a "Plan:" header:',
+				"",
+				"Plan:",
+				"1. First step description",
+				"2. Second step description",
+				"...",
+				"",
+				"Do NOT attempt to make changes - just describe what you would do.",
+			);
 			return {
 				message: {
 					customType: "plan-mode-context",
-					content: `[PLAN MODE ACTIVE]
-You are in plan mode - a read-only exploration mode for safe code analysis.
-
-Restrictions:
-- You can only use: read, bash, grep, find, ls, questionnaire
-- You CANNOT use: edit, write (file modifications are disabled)
-- Bash is restricted to an allowlist of read-only commands
-
-Ask clarifying questions using the questionnaire tool.
-Use brave-search skill via bash for web research.
-
-Create a detailed numbered plan under a "Plan:" header:
-
-Plan:
-1. First step description
-2. Second step description
-...
-
-Do NOT attempt to make changes - just describe what you would do.`,
+					content: lines.join("\n"),
 					display: false,
 				},
 			};
@@ -333,7 +355,8 @@ After completing a step, include a [DONE:n] tag in your response.`,
 		}
 
 		if (planModeEnabled) {
-			pi.setActiveTools(PLAN_MODE_TOOLS);
+			const { tools } = getPlanModeTools();
+			pi.setActiveTools(tools);
 		}
 		updateStatus(ctx);
 	});
